@@ -1,0 +1,10 @@
+tile_set: "/assets/gas.tilesource"
+default_animation: "gas_bloom"
+material: "/game/materials/pixel.material"
+blend_mode: BLEND_MODE_ALPHA
+size_mode: SIZE_MODE_MANUAL
+size {
+  x: 180.0
+  y: 180.0
+  z: 0.0
+}

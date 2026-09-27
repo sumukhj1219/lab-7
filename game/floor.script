@@ -1,0 +1,11 @@
+local config = require "modules.config"
+
+-- Without the real floor art, draw a flat tinted rectangle instead.
+go.property("placeholder_material", resource.material("/game/placeholder/solid.material"))
+
+function init(self)
+	if config.placeholder("floor") then
+		go.set("#sprite", "material", self.placeholder_material)
+		go.set("#sprite", "tint", config.TINT.floor)
+	end
+end

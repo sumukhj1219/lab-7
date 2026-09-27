@@ -1,0 +1,25 @@
+-- Floating text ("+50", "CHAIN x4!"): rises and fades, then deletes itself.
+-- The text and color arrive in a "setup" message right after spawning.
+
+local config = require "modules.config"
+
+go.property("big", false)
+
+function init(self)
+	if self.big then
+		go.set("#label", "scale", vmath.vector3(1, 1, 1))
+	end
+	local pos = go.get_position()
+	go.animate(".", "position.y", go.PLAYBACK_ONCE_FORWARD, pos.y + config.FLOAT_TEXT_RISE, go.EASING_OUTQUAD, config.FLOAT_TEXT_TIME)
+	go.animate("#label", "color.w", go.PLAYBACK_ONCE_FORWARD, 0, go.EASING_INQUAD, config.FLOAT_TEXT_TIME, 0, function()
+		go.delete()
+	end)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("setup") then
+		label.set_text("#label", message.text)
+		local c = message.color
+		go.set("#label", "color", vmath.vector4(c.x, c.y, c.z, go.get("#label", "color.w")))
+	end
+end

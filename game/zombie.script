@@ -1,0 +1,182 @@
+local config = require "modules.config"
+local world = require "modules.world"
+local animals = require "modules.animals"
+
+go.property("tier", 0)
+go.property("animal", false) -- an infected animal's zombie form (small, own art)
+go.property("kind", 1)        -- which animal, when `animal` is set
+go.property("rabbit_sheet", resource.tile_source("/assets/rabbit.tilesource"))
+go.property("rat_sheet", resource.tile_source("/assets/rat.tilesource"))
+go.property("cat_sheet", resource.tile_source("/assets/cat.tilesource"))
+
+local MANAGER = "/manager#script"
+local PLAYER = hash("player")
+local ANIMAL = hash("animal")
+local WALL = hash("wall")
+
+-- Speed, sight, look and glow all follow from the tier (§5.7).
+local function apply_tier(self)
+	local t = self.tier
+	local speed = 1
+	if t >= 1 then speed = speed + config.TIER1_SPEED_BONUS end
+	if t >= 4 then speed = speed + config.TIER4_SPEED_BONUS end
+	self.speed = config.ZOMBIE_SPEED * speed
+	self.sight = config.ZOMBIE_SIGHT * (t >= 2 and 1 + config.TIER2_SIGHT_BONUS or 1)
+
+	msg.post("#glow", t >= 2 and "enable" or "disable")
+	world.zombies[self.id].tier = t
+end
+
+-- One sheet for every tier: tier and stun show as a colored glow (the art is
+-- too dark for a multiplied tint).
+local function refresh_look(self)
+	go.set("#sprite", "flash", self.stunned and config.ZOMBIE_STUN_FLASH or config.ZOMBIE_TIER_FLASH[self.tier])
+end
+
+local function play(self, anim)
+	if self.anim ~= anim then
+		self.anim = anim
+		sprite.play_flipbook("#sprite", anim)
+	end
+end
+
+function init(self)
+	self.id = go.get_id()
+	self.correction = vmath.vector3()
+	self.stunned = false
+	self.radius = self.animal and config.ANIMAL_RADIUS or config.ZOMBIE_RADIUS
+	world.zombies[self.id] = { pos = go.get_position(), radius = self.radius, tier = self.tier, stunned = false, immune = false, animal = self.animal, kind = self.kind }
+	if self.animal then
+		animals.set_sheet(self, "#sprite", self.kind)
+	end
+	go.set("#glow", "tint", config.TINT.glow) -- builtin blob, always tinted
+	apply_tier(self)
+	refresh_look(self)
+end
+
+function final(self)
+	world.zombies[self.id] = nil
+end
+
+local function is_turning(animal) return animal.infected end
+
+-- Nearest of {player, free animals} in sight. Animals get BAIT_BIAS px
+-- of advantage, so a released animal close by pulls zombies off the player.
+local function pick_target(self, pos)
+	local target_id, target_pos, best = nil, nil, math.huge
+	if world.player_pos then
+		local d = vmath.length(world.player_pos - pos)
+		if d <= self.sight then
+			target_id, target_pos, best = PLAYER, world.player_pos, d
+		end
+	end
+	for id, animal in pairs(world.animals) do
+		if not animal.infected then
+			local d = vmath.length(animal.pos - pos)
+			if d <= self.sight and d - config.BAIT_BIAS < best then
+				target_id, target_pos, best = id, animal.pos, d - config.BAIT_BIAS
+			end
+		end
+	end
+	return target_id, target_pos
+end
+
+function update(self, dt)
+	local pos = go.get_position()
+
+	local moving = false
+	local attacking = false
+	local face_x = nil
+	if not self.stunned then
+		local target_id, target = pick_target(self, pos)
+		if target_id ~= self.target_id and target_id ~= nil and target_id ~= PLAYER and self.target_id == PLAYER then
+			msg.post(MANAGER, "bait")
+		end
+		self.target_id = target_id
+
+		if target then
+			face_x = target.x
+			local to_target = target - pos
+			to_target.z = 0
+			attacking = target_id == PLAYER and vmath.length(to_target) <= config.ZOMBIE_ATTACK_RANGE
+			if vmath.length_sqr(to_target) > 1 then
+				local dir = vmath.normalize(to_target)
+				local speed = self.speed
+				if world.in_gas(pos) then
+					speed = speed * config.GAS_SLOW
+				end
+				pos = pos + dir * speed * dt
+				go.set_position(pos)
+				moving = true
+			end
+		end
+	end
+	if self.animal then
+		play(self, "animal_zombie") -- the animal sheets have one zombie loop
+	elseif attacking then
+		play(self, "zombie_attack")
+	else
+		play(self, moving and "zombie_walk" or "zombie_idle")
+	end
+
+	-- Mirror (around the vertical axis) to face whatever it chases. Human
+	-- zombie art faces right, animal art faces left. With no target, or
+	-- stunned, keep the last facing.
+	if face_x then
+		local target_left = face_x < pos.x
+		sprite.set_hflip("#sprite", self.animal ~= target_left)
+	end
+
+	-- Don't stack on other zombies or on animals that are already turning.
+	-- Healthy animals are left alone: touching them is how bites happen.
+	local push = world.push_apart(self.id, pos, self.radius, world.zombies, config.SEPARATION)
+		+ world.push_apart(nil, pos, self.radius, world.animals, config.SEPARATION, is_turning)
+	if vmath.length_sqr(push) > 0 then
+		pos = pos + push
+		go.set_position(pos)
+	end
+
+	world.zombies[self.id].pos = pos
+	self.correction = vmath.vector3()
+end
+
+local function separate(self, normal, distance)
+	if distance <= 0 then return end
+	local proj = vmath.project(self.correction, normal * distance)
+	if proj < 1 then
+		local comp = (distance - distance * proj) * normal
+		go.set_position(go.get_position() + comp)
+		self.correction = self.correction + comp
+	end
+end
+
+local function set_immune(self, immune)
+	world.zombies[self.id].immune = immune
+end
+
+local function unstun(self)
+	self.stunned = false
+	world.zombies[self.id].stunned = false
+	set_immune(self, true)
+	refresh_look(self)
+	timer.delay(config.STUN_IMMUNE, false, function() set_immune(self, false) end)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("contact_point_response") then
+		if message.other_group == WALL then
+			separate(self, message.normal, message.distance)
+		elseif not self.stunned and (message.other_group == PLAYER or message.other_group == ANIMAL) then
+			msg.post(MANAGER, "zombie_bit", { target = message.other_id, source = self.id })
+		end
+	elseif message_id == hash("stun") and not self.stunned then
+		self.stunned = true
+		world.zombies[self.id].stunned = true
+		refresh_look(self)
+		timer.delay(config.STUN_TIME, false, unstun)
+	elseif message_id == hash("mutate") then
+		self.tier = message.tier
+		apply_tier(self)
+		refresh_look(self)
+	end
+end

@@ -1,0 +1,10 @@
+tile_set: "/assets/game.atlas"
+default_animation: "wall_placeholder"
+material: "/game/placeholder/solid.material"
+blend_mode: BLEND_MODE_ALPHA
+size_mode: SIZE_MODE_MANUAL
+size {
+  x: 24.0
+  y: 720.0
+  z: 0.0
+}

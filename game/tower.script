@@ -1,0 +1,26 @@
+-- Stun tower: pulses every TOWER_PULSE_INTERVAL. The manager picks the
+-- target and runs the chain, since it owns the zombie list.
+
+local config = require "modules.config"
+
+local MANAGER = "/manager#script"
+
+local function pulse(self)
+	msg.post(MANAGER, "tower_pulse", { position = go.get_position() })
+	sprite.play_flipbook("#sprite", "tower_pulse", function()
+		sprite.play_flipbook("#sprite", "tower")
+	end)
+	local pop = config.TOWER_POP_SCALE
+	go.animate(".", "scale", go.PLAYBACK_ONCE_PINGPONG, vmath.vector3(pop, pop, 1), go.EASING_OUTQUAD, config.TOWER_POP_TIME)
+end
+
+function init(self)
+	if config.placeholder("tower") then
+		go.set("#sprite", "tint", config.TINT.tower)
+	end
+	timer.delay(config.TOWER_PULSE_INTERVAL, true, pulse)
+	timer.delay(config.TOWER_LIFETIME, false, function()
+		msg.post(MANAGER, "tower_expired", { id = go.get_id() })
+		go.delete()
+	end)
+end

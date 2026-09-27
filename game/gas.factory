@@ -1,0 +1,2 @@
+prototype: "/game/gas.go"
+load_dynamically: false

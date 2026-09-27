@@ -1,0 +1,152 @@
+-- LAB-AI dialog box (§8). Lines type in, advance on Space/Enter/click, and
+-- auto-advance DIALOG_AUTO_HIDE seconds after they are fully shown.
+-- "intro" freezes the game until the intro lines are done; "tutorial"
+-- queues a single contextual line; "resolve" drops a tutorial line (shown
+-- or queued) once the player has done what it asks.
+
+local config = require "modules.config"
+local world = require "modules.world"
+local session = require "modules.session"
+local dialog = require "modules.dialog_data"
+local ui = require "modules.ui"
+
+local W = config.ROOM_WIDTH
+local MAIN = "main:/main#script"
+local MANAGER = "/manager#script"
+
+local ADVANCE = hash("advance")
+local CLICK = hash("click")
+
+local BOX_W, BOX_H = 1000, 130
+local TEXT_W = 780 -- wrap width of the line, in unscaled text units
+
+local function set_visible(self, visible)
+	gui.set_enabled(self.root, visible)
+	world.dialog_showing = visible
+end
+
+local function finish_intro(self)
+	self.intro = false
+	world.in_intro = false
+	world.paused = false
+	msg.post(MAIN, "set_paused", { paused = false })
+	msg.post(MANAGER, "intro_done")
+end
+
+-- Queue entries are { id = tutorial id or "intro", text = line }.
+local function show_next(self)
+	local entry = table.remove(self.queue, 1)
+	if not entry then
+		self.line_id = nil
+		set_visible(self, false)
+		if self.intro then finish_intro(self) end
+		return
+	end
+	self.line_id = entry.id
+	self.line = entry.text
+	self.shown = 0
+	self.hide_timer = nil
+	gui.set_text(self.text, "")
+	set_visible(self, true)
+end
+
+local function advance(self)
+	if self.shown < #self.line then
+		self.shown = #self.line -- finish typing first
+		gui.set_text(self.text, self.line)
+	else
+		show_next(self)
+	end
+end
+
+local function skip(self)
+	session.skip_tutorial = true
+	self.queue = {}
+	show_next(self)
+end
+
+function init(self)
+	gui.set_render_order(4)
+	msg.post(".", "acquire_input_focus")
+
+	self.root = ui.box(nil, W / 2, 90, BOX_W, BOX_H, config.UI_COLOR.panel)
+	self.portrait = ui.labai_portrait(self.root, -BOX_W / 2 + 56, 0)
+	ui.text(self.root, -BOX_W / 2 + 110, 38, dialog.SPEAKER, 0.55, config.UI_COLOR.chain, gui.PIVOT_W)
+	self.text = ui.text(self.root, -BOX_W / 2 + 110, 8, "", 0.5, config.UI_COLOR.text, gui.PIVOT_NW)
+	gui.set_size(self.text, vmath.vector3(TEXT_W / 0.5, 200, 0))
+	self.skip = ui.button(self.root, BOX_W / 2 - 90, -38, 160, 34, "Skip tutorial")
+	gui.set_scale(self.skip.text, vmath.vector3(0.45, 0.45, 1))
+
+	self.queue = {}
+	self.line = ""
+	self.shown = 0
+	self.intro = false
+	set_visible(self, false)
+end
+
+function update(self, dt)
+	if not gui.is_enabled(self.root) then return end
+	-- Uses real frame time: the game proxy is frozen during the intro,
+	-- so dt would be 0. The dialog lives in the game collection, though,
+	-- so it also stops while the pause menu is open.
+	dt = self.intro and 1 / 60 or dt
+	-- LAB-AI's mouth flaps while the line types in.
+	local talking = self.shown < #self.line and math.floor(self.shown / 3) % 2 == 0
+	gui.set_size(self.portrait.mouth, vmath.vector3(26, talking and 10 or 4, 0))
+	if self.shown < #self.line then
+		self.shown = math.min(#self.line, self.shown + config.DIALOG_CHARS_PER_SEC * dt)
+		gui.set_text(self.text, self.line:sub(1, math.floor(self.shown)))
+		if self.shown >= #self.line then
+			self.hide_timer = config.DIALOG_AUTO_HIDE
+		end
+	elseif self.hide_timer then
+		self.hide_timer = self.hide_timer - dt
+		if self.hide_timer <= 0 then
+			show_next(self)
+		end
+	end
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("intro") then
+		self.intro = true
+		world.in_intro = true
+		world.paused = true
+		msg.post(MAIN, "set_paused", { paused = true })
+		for _, line in ipairs(dialog.intro) do
+			self.queue[#self.queue + 1] = { id = "intro", text = line }
+		end
+		show_next(self)
+	elseif message_id == hash("tutorial") then
+		local line = dialog.tutorial[message.id]
+		if line and not session.skip_tutorial then
+			self.queue[#self.queue + 1] = { id = message.id, text = line }
+			if not gui.is_enabled(self.root) then
+				show_next(self)
+			end
+		end
+	elseif message_id == hash("resolve") then
+		for i = #self.queue, 1, -1 do
+			if self.queue[i].id == message.id then table.remove(self.queue, i) end
+		end
+		if self.line_id == message.id and gui.is_enabled(self.root) then
+			show_next(self)
+		end
+	end
+end
+
+function on_input(self, action_id, action)
+	if not gui.is_enabled(self.root) or world.paused and not self.intro then
+		return false
+	end
+	ui.hover({ self.skip }, action)
+	if action_id == CLICK and action.pressed and ui.hit(self.skip, action) then
+		skip(self)
+		return true
+	end
+	if (action_id == ADVANCE or action_id == CLICK) and action.pressed then
+		advance(self)
+		return true
+	end
+	return false
+end

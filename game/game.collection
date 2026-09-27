@@ -1,0 +1,46 @@
+name: "game"
+scale_along_z: 0
+instances {
+  id: "floor"
+  prototype: "/game/floor.go"
+  position {
+    x: 640.0
+    y: 360.0
+    z: -0.5
+  }
+}
+instances {
+  id: "walls"
+  prototype: "/game/walls.go"
+  position {
+    x: 0.0
+    y: 0.0
+    z: 0.1
+  }
+}
+instances {
+  id: "player"
+  prototype: "/game/player.go"
+  children: "player_health"
+}
+instances {
+  id: "player_health"
+  prototype: "/game/player_health.go"
+  position {
+    x: 0.0
+    y: 34.0
+    z: 0.06
+  }
+}
+instances {
+  id: "manager"
+  prototype: "/game/game_manager.go"
+}
+instances {
+  id: "ui"
+  prototype: "/game/ui.go"
+}
+instances {
+  id: "sfx"
+  prototype: "/game/sfx/sfx.go"
+}

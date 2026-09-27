@@ -1,0 +1,649 @@
+-- Owns the run (§11): spawning, timers, mutation, towers and chains, gas,
+-- antidotes, research terminals, score and game over. Entities report
+-- events here by message; the HUD is fed from here every frame.
+
+local config = require "modules.config"
+local world = require "modules.world"
+local score = require "modules.score"
+local session = require "modules.session"
+local wd = require "modules.wd"
+local sfx = require "modules.sfx"
+
+local PLAYER = "/player"
+local HUD = "/ui#hud"
+local GAMEOVER = "/ui#gameover"
+local PAUSE = "/ui#pause"
+local DIALOG = "/ui#dialog"
+local MAIN = "main:/main#script"
+local BEAM_LENGTH = 32 -- height of the link/arc sprites, stretched to fit
+local C = config.UI_COLOR
+
+-- Feedback ------------------------------------------------------------------
+
+local function float_text(pos, text, color, big)
+	local id = factory.create("#float_text_factory", vmath.vector3(pos.x, pos.y + 20, config.FLOAT_TEXT_Z), nil, { big = big or false })
+	msg.post(id, "setup", { text = text, color = color or C.score })
+end
+
+local function notify(text, color)
+	msg.post(HUD, "notify", { text = text, color = color or C.text })
+end
+
+-- `tag` lets a banner be cleared early with clear_banner(tag).
+local function banner(text, color, time, tag)
+	msg.post(HUD, "banner", { text = text, color = color or C.bad, time = time or config.BANNER_TIME, tag = tag })
+end
+
+local function clear_banner(tag)
+	msg.post(HUD, "clear_banner", { tag = tag })
+end
+
+-- Tutorial (§8): each line once, first run of the session (or How to Play).
+local function tutorial(self, id)
+	if not self.tutorial or not self.intro_done or self.tutorial_shown[id] then return end
+	self.tutorial_shown[id] = true
+	msg.post(DIALOG, "tutorial", { id = id })
+end
+
+-- The player did what tip `id` asks: close it if showing, and never show it
+-- later (e.g. a tower placed before the tower tip comes up).
+local function resolve(self, id)
+	if not self.tutorial or self.resolved[id] then return end
+	self.resolved[id] = true
+	self.tutorial_shown[id] = true
+	msg.post(DIALOG, "resolve", { id = id })
+end
+
+-- Spawning ------------------------------------------------------------------
+
+-- `animal_kind`: spawn that animal's small zombie form instead of a human one.
+local function spawn_zombie(self, pos, tier, animal_kind)
+	if world.count(world.zombies) >= config.ZOMBIE_MAX then return end
+	pos = vmath.vector3(pos.x, pos.y, config.ZOMBIE_SPAWN.z)
+	if animal_kind then
+		factory.create("#animal_zombie_factory", pos, nil, { tier = tier or self.tier, kind = animal_kind })
+	else
+		factory.create("#zombie_factory", pos, nil, { tier = tier or self.tier })
+	end
+end
+
+-- Stretch a link (infection) or arc (stun) sprite from `from` to `to`.
+local function spawn_beam(factory_url, from, to, props)
+	local d = to - from
+	d.z = 0
+	local len = vmath.length(d)
+	if len < 1 then return end
+	local mid = from + d * 0.5
+	mid.z = config.FX_Z
+	local rot = vmath.quat_rotation_z(math.atan2(d.y, d.x) - math.pi / 2)
+	factory.create(factory_url, mid, rot, props, vmath.vector3(1, len / BEAM_LENGTH, 1))
+end
+
+-- Infection -----------------------------------------------------------------
+
+-- Infection can't pass into or out of a gas cloud (§5.6).
+local function gas_blocks(from, to)
+	return world.in_gas(from) or world.in_gas(to)
+end
+
+-- An infection that gas stopped. Counted once per target per cooldown.
+local function cascade_blocked(self, target, pos)
+	local last = self.blocked_at[target]
+	if last and self.run.seconds - last < config.CASCADE_BLOCK_COOLDOWN then return end
+	self.blocked_at[target] = self.run.seconds
+	local points = score.cascade_stopped(self.run)
+	sfx.play("coin")
+	wd.unlock_achievement("GAS_BREAK")
+	float_text(pos, "BLOCKED +" .. points, C.good)
+end
+
+local function infect_animal(self, id, from)
+	local animal = world.animals[id]
+	if not animal or animal.infected then return end
+	animal.infected = true
+	msg.post(id, "infect")
+	tutorial(self, "gas")
+	if from then
+		spawn_beam("#link_factory", from, animal.pos)
+	end
+end
+
+-- The caged animal breaks out already infected and starts turning.
+local function break_cage(self, id, cage, from)
+	cage.state = "broken" -- set now, so a second burst this frame skips it
+	msg.post(id, "set_state", { state = "broken" })
+	factory.create("#animal_factory", vmath.vector3(cage.pos.x, cage.pos.y, 0.3), nil, { kind = cage.kind, infected = true })
+	tutorial(self, "gas")
+	if from then
+		spawn_beam("#link_factory", from, cage.pos)
+	end
+end
+
+local function is_closed(cage) return cage.state == "closed" end
+
+local function release_nearest_cage(self)
+	if not world.player_pos then return end
+	local id, cage, d = world.nearest(world.cages, world.player_pos, is_closed)
+	if not id or d > config.RELEASE_RANGE then return end
+	cage.state = "open"
+	msg.post(id, "set_state", { state = "open" })
+	factory.create("#animal_factory", vmath.vector3(cage.pos.x, cage.pos.y, 0.3), nil, { kind = cage.kind })
+	self.run.animals_released = self.run.animals_released + 1
+	resolve(self, "release")
+end
+
+local function on_bite(self, target, source)
+	local zombie = world.zombies[source]
+	if not zombie then return end
+	if target == go.get_id(PLAYER) then
+		if world.player_pos and not gas_blocks(zombie.pos, world.player_pos) then
+			msg.post(PLAYER, "infect")
+		end
+		return
+	end
+	local animal = world.animals[target]
+	if not animal or animal.infected then return end
+	if gas_blocks(zombie.pos, animal.pos) then
+		cascade_blocked(self, target, animal.pos)
+	else
+		infect_animal(self, target, zombie.pos)
+	end
+end
+
+-- Stun towers and chains ------------------------------------------------------
+
+local function place_tower(self)
+	if not world.player_pos then return end
+	if self.tower_cooldown > 0 then
+		notify(string.format("Tower ready in %.1f s", self.tower_cooldown), C.dim)
+		return
+	end
+	local pos = vmath.vector3(world.player_pos.x, world.player_pos.y, config.TOWER_Z)
+	table.insert(self.towers, factory.create("#tower_factory", pos))
+	if #self.towers > config.TOWER_MAX then
+		go.delete(table.remove(self.towers, 1))
+	end
+	self.tower_cooldown = config.TOWER_COOLDOWN
+	resolve(self, "tower")
+end
+
+local function forget_tower(self, id)
+	for i, tower in ipairs(self.towers) do
+		if tower == id then
+			table.remove(self.towers, i)
+			return
+		end
+	end
+end
+
+local function is_stunnable(z) return not z.stunned and not z.immune end
+
+local function stun(self, id, zombie)
+	zombie.stunned = true -- mark now so the chain never picks it twice
+	msg.post(id, "stun")
+	float_text(zombie.pos, "+" .. score.stun(self.run), C.chain)
+	sfx.play("coin") -- one coin per stunned zombie; a chain queues them up
+	wd.unlock_achievement("FIRST_STUN")
+	wd.add_stat("TOTAL_STUNS", 1)
+end
+
+local function tower_pulse(self, tower_pos)
+	local id, zombie, d = world.nearest(world.zombies, tower_pos, is_stunnable)
+	if not id or d > config.TOWER_RANGE then return end
+
+	spawn_beam("#arc_factory", tower_pos, zombie.pos, { arc = true })
+	stun(self, id, zombie)
+	local length = 1
+
+	-- Jump to the nearest unstunned zombie close by, up to CHAIN_MAX times.
+	for _ = 1, config.CHAIN_MAX do
+		local next_id, next_zombie, nd = world.nearest(world.zombies, zombie.pos, is_stunnable)
+		if not next_id or nd > config.CHAIN_RADIUS then break end
+		spawn_beam("#arc_factory", zombie.pos, next_zombie.pos, { arc = true })
+		stun(self, next_id, next_zombie)
+		zombie = next_zombie
+		length = length + 1
+	end
+
+	local bonus = score.chain(self.run, length)
+	if length >= config.ACH_CHAIN then
+		wd.unlock_achievement("CHAIN_5")
+	end
+	if bonus > 0 then
+		float_text(zombie.pos + vmath.vector3(0, 30, 0), "CHAIN x" .. length .. "!  +" .. bonus, C.chain, true)
+	end
+end
+
+-- Mutation ------------------------------------------------------------------
+
+local function burst(self, pos, tier)
+	local radius = config.BURST_RADIUS * (tier >= 4 and config.TIER4_BURST_MULT or 1)
+	factory.create("#burst_factory", vmath.vector3(pos.x, pos.y, config.FX_Z), nil, { radius = radius })
+	for id, cage in pairs(world.cages) do
+		if cage.state == "closed" and vmath.length(cage.pos - pos) <= radius then
+			if world.in_gas(cage.pos) then
+				cascade_blocked(self, id, cage.pos)
+			else
+				break_cage(self, id, cage, pos)
+			end
+		end
+	end
+	for id, animal in pairs(world.animals) do
+		if not animal.infected and vmath.length(animal.pos - pos) <= radius then
+			if world.in_gas(animal.pos) then
+				cascade_blocked(self, id, animal.pos)
+			else
+				infect_animal(self, id, pos)
+			end
+		end
+	end
+end
+
+local function mutate_zombie(self, id, z)
+	local old_tier = z.tier
+	local tier = math.min(old_tier + 1, config.TIER_MAX)
+	if tier ~= old_tier then
+		z.tier = tier
+		msg.post(id, "mutate", { tier = tier })
+		if tier == config.SPLIT_TIER then
+			spawn_zombie(self, z.pos + vmath.vector3(config.SPLIT_OFFSET, 0, 0), tier, z.animal and z.kind or nil)
+		end
+	end
+	if not z.stunned then
+		burst(self, z.pos, tier)
+	end
+end
+
+local function mutate(self)
+	resolve(self, "mutation") -- the warning tip is stale once it happens
+	self.tier = math.min(self.tier + 1, config.TIER_MAX)
+	banner("MUTATION!  TIER " .. self.tier, C.bad, config.MUTATION_BANNER_TIME)
+
+	-- Snapshot first: splitting adds zombies while we iterate.
+	local zombies = {}
+	for id, z in pairs(world.zombies) do
+		zombies[#zombies + 1] = { id = id, z = z }
+	end
+	for _, entry in ipairs(zombies) do
+		-- Gassed zombies skip this mutation entirely.
+		if not world.in_gas(entry.z.pos) then
+			mutate_zombie(self, entry.id, entry.z)
+		end
+	end
+
+	if world.player_pos then
+		float_text(world.player_pos, "SURVIVED +" .. score.mutation(self.run), C.score)
+		sfx.play("coin")
+	end
+	tutorial(self, "score")
+end
+
+local function update_mutation(self, dt)
+	-- First run: the clock waits while LAB-AI is talking.
+	if self.tutorial and world.dialog_showing then return end
+	local was_warning = self.mutation_timer <= config.MUTATION_WARNING
+	self.mutation_timer = self.mutation_timer - dt
+	if not was_warning and self.mutation_timer <= config.MUTATION_WARNING then
+		msg.post(HUD, "flash") -- warning sound in M7
+		tutorial(self, "mutation")
+	end
+	if self.mutation_timer <= 0 then
+		mutate(self)
+		self.mutation_timer = self.mutation_timer + config.MUTATION_INTERVAL
+	end
+end
+
+-- Keeps the room from going quiet: break a random cage if few zombies are left.
+local function update_auto_infect(self, dt)
+	self.auto_infect_timer = self.auto_infect_timer - dt
+	if self.auto_infect_timer > 0 then return end
+	self.auto_infect_timer = config.AUTO_INFECT_INTERVAL
+	if world.count(world.zombies) >= config.AUTO_INFECT_MIN_ZOMBIES then return end
+	local closed = {}
+	for id, cage in pairs(world.cages) do
+		if is_closed(cage) then closed[#closed + 1] = id end
+	end
+	if #closed > 0 then
+		local id = closed[math.random(#closed)]
+		break_cage(self, id, world.cages[id])
+	end
+end
+
+-- Gas -----------------------------------------------------------------------
+
+local function throw_gas(self, target)
+	if not world.player_pos then return end
+	if self.gas_charges <= 0 then
+		notify(string.format("No gas - next charge in %.0f s", self.gas_regen_timer), C.dim)
+		return
+	end
+	local offset = target - world.player_pos
+	offset.z = 0
+	if vmath.length(offset) > config.GAS_RANGE then
+		offset = vmath.normalize(offset) * config.GAS_RANGE
+	end
+	local pos = world.player_pos + offset
+	local m = config.WALL_THICKNESS
+	pos.x = math.max(m, math.min(config.ROOM_WIDTH - m, pos.x))
+	pos.y = math.max(m, math.min(config.ROOM_HEIGHT - m, pos.y))
+	pos.z = config.GAS_Z
+	factory.create("#gas_factory", pos)
+	self.gas_charges = self.gas_charges - 1
+	resolve(self, "gas")
+end
+
+local function update_gas_regen(self, dt)
+	if self.gas_charges >= config.GAS_CHARGES then
+		self.gas_regen_timer = config.GAS_REGEN
+		return
+	end
+	self.gas_regen_timer = self.gas_regen_timer - dt
+	if self.gas_regen_timer <= 0 then
+		self.gas_charges = self.gas_charges + 1
+		self.gas_regen_timer = config.GAS_REGEN
+	end
+end
+
+-- Antidotes and game over -----------------------------------------------------
+
+local function drink_request(self)
+	if self.antidotes > 0 then
+		msg.post(PLAYER, "start_drink")
+		resolve(self, "antidote")
+		clear_banner("infected")
+	else
+		notify("No antidotes left!", C.bad)
+	end
+end
+
+-- `health` is the player's health just before the antidote healed them.
+local function drink_finished(self, health)
+	self.antidotes = self.antidotes - 1
+	self.run.antidotes_used = self.run.antidotes_used + 1
+	self.run.infected = false
+	if self.run.antidotes_used == config.ACH_LAST_VIAL_COUNT then
+		self.last_vial_at = self.run.seconds
+	end
+	if health < config.CLOSE_CALL_HEALTH then
+		notify("Close call!", C.good)
+		sfx.play("powerup")
+		wd.unlock_achievement("CLOSE_CALL")
+	else
+		notify("Cured", C.good)
+		sfx.play("powerup")
+	end
+end
+
+local function game_over(self)
+	self.game_over = true
+	score.finish(self.run, self.antidotes)
+	local new_best = self.run.score > session.best_score
+	session.best_score = math.max(session.best_score, self.run.score)
+	msg.post(PAUSE, "disable_pause")
+	msg.post(GAMEOVER, "show", { run = self.run, best = session.best_score, new_best = new_best })
+	msg.post(MAIN, "game_over")
+
+	wd.add_stat("RUNS_PLAYED", 1)
+	wd.store()
+	if wd.is_available() then
+		wd.submit_run(self.run, function(ok, rank)
+			msg.post(GAMEOVER, "rank", { rank = rank })
+			-- Fetch the top list after submitting so it includes this run.
+			wd.get_top("high-score", config.LEADERBOARD_TOP, function(top_ok, entries)
+				msg.post(GAMEOVER, "top", { entries = entries })
+			end)
+		end)
+	end
+end
+
+-- Achievements checked against run time (§10).
+local function check_achievements(self)
+	local t = self.run.seconds
+	if t >= config.ACH_STEADY_HANDS_TIME and self.run.antidotes_used == 0 then
+		wd.unlock_achievement("STEADY_HANDS")
+	end
+	if t >= config.ACH_ANIMAL_RIGHTS_TIME and self.run.animals_released == 0 then
+		wd.unlock_achievement("ANIMAL_RIGHTS")
+	end
+	if t >= config.ACH_SURVIVE_TIME then
+		wd.unlock_achievement("SURVIVE_5MIN")
+	end
+	if self.run.mutations_survived >= config.ACH_MUTATIONS then
+		wd.unlock_achievement("MUTATION_10")
+	end
+	if self.last_vial_at and t - self.last_vial_at >= config.ACH_LAST_VIAL_TIME then
+		wd.unlock_achievement("LAST_VIAL")
+	end
+end
+
+-- Research terminals ---------------------------------------------------------
+
+local function activate_next_terminal(self)
+	local choices = {}
+	for id in pairs(world.terminals) do
+		if id ~= self.last_terminal then choices[#choices + 1] = id end
+	end
+	if #choices == 0 then return end
+	local id = choices[math.random(#choices)]
+	world.terminals[id].active = true
+	world.terminals[id].progress = 0
+	self.active_terminal = id
+	self.tone_played = false
+	tutorial(self, "terminal")
+end
+
+local function complete_upload(self, id)
+	local t = world.terminals[id]
+	t.active = false
+	self.active_terminal = nil
+	self.last_terminal = id
+	self.upload_time = self.upload_time + config.UPLOAD_TIME_STEP
+	self.antidotes = math.min(config.ANTIDOTES, self.antidotes + config.TERMINAL_ANTIDOTES)
+	float_text(t.pos, "UPLOADED +" .. score.upload(self.run), C.score, true)
+	sfx.play("coin")
+	self.next_terminal_timer = config.TERMINAL_NEXT_DELAY
+end
+
+local function update_terminals(self, dt)
+	if not self.active_terminal then
+		self.next_terminal_timer = self.next_terminal_timer - dt
+		if self.next_terminal_timer <= 0 then
+			activate_next_terminal(self)
+		end
+		return
+	end
+	local t = world.terminals[self.active_terminal]
+	local in_range = world.player_pos and vmath.length(world.player_pos - t.pos) <= config.TERMINAL_RANGE
+	if in_range and not self.tone_played then
+		self.tone_played = true
+		sfx.play("tone") -- first time at this terminal
+	end
+	if in_range then
+		t.progress = t.progress + dt / self.upload_time
+		resolve(self, "terminal")
+		if t.progress >= 1 then
+			complete_upload(self, self.active_terminal)
+		end
+	end
+end
+
+local function check_release_tip(self)
+	if not world.player_pos or self.tutorial_shown.release then return end
+	local id, _, d = world.nearest(world.cages, world.player_pos, is_closed)
+	if id and d <= config.RELEASE_RANGE then
+		tutorial(self, "release")
+	end
+end
+
+local function intro_done(self)
+	self.intro_done = true
+	self.tower_tip_timer = config.TUTORIAL_TOWER_DELAY
+	tutorial(self, "move")
+	if self.active_terminal then
+		tutorial(self, "terminal")
+	end
+end
+
+local function update_tutorial(self, dt)
+	if not self.tutorial or not self.intro_done then return end
+	if self.tower_tip_timer then
+		self.tower_tip_timer = self.tower_tip_timer - dt
+		if self.tower_tip_timer <= 0 then
+			self.tower_tip_timer = nil
+			tutorial(self, "tower")
+		end
+	end
+	check_release_tip(self)
+end
+
+-- Cage layout -----------------------------------------------------------------
+
+local function in_rect(pos, r, pad)
+	return pos.x > r.x - pad and pos.x < r.x + r.w + pad and pos.y > r.y - pad and pos.y < r.y + r.h + pad
+end
+
+local function flat_distance(a, b)
+	return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+
+local function cage_spot_ok(pos, placed)
+	if flat_distance(pos, config.PLAYER_SPAWN) < config.CAGE_SPAWN_CLEARANCE
+	or flat_distance(pos, config.ZOMBIE_SPAWN) < config.CAGE_SPAWN_CLEARANCE then
+		return false
+	end
+	for _, t in ipairs(config.TERMINALS) do
+		if flat_distance(pos, t.pos) < config.CAGE_TERMINAL_CLEARANCE then return false end
+	end
+	for _, r in ipairs(config.CAGE_KEEP_CLEAR) do
+		if in_rect(pos, r, 20) then return false end -- 20 = half a cage
+	end
+	for _, other in ipairs(placed) do
+		if flat_distance(pos, other) < config.CAGE_MIN_SPACING then return false end
+	end
+	return true
+end
+
+-- Random, non-symmetric cage spots that respect the rules in config.
+-- May return fewer than CAGE_COUNT if the room is too crowded.
+local function scatter_cages()
+	local placed = {}
+	local m = config.CAGE_MARGIN
+	for _ = 1, config.CAGE_PLACE_TRIES do
+		if #placed >= config.CAGE_COUNT then break end
+		local pos = vmath.vector3(
+			math.random(m, config.ROOM_WIDTH - m),
+			math.random(m, config.ROOM_HEIGHT - config.CAGE_TOP_CLEAR),
+			config.CAGE_Z)
+		if cage_spot_ok(pos, placed) then
+			placed[#placed + 1] = pos
+		end
+	end
+	return placed
+end
+
+-- HUD -----------------------------------------------------------------------
+
+local function send_hud(self)
+	msg.post(HUD, "hud", {
+		score = self.run.score,
+		infected = self.run.infected,
+		mutation_left = self.mutation_timer,
+		tier = self.tier,
+		antidotes = self.antidotes,
+		gas_charges = self.gas_charges,
+		gas_regen = self.gas_charges >= config.GAS_CHARGES and 1 or 1 - self.gas_regen_timer / config.GAS_REGEN,
+		tower_cooldown = self.tower_cooldown / config.TOWER_COOLDOWN,
+	})
+end
+
+-- Lifecycle -----------------------------------------------------------------
+
+function init(self)
+	world.reset()
+	self.run = score.new_run()
+	self.tier = 0 -- current mutation tier; new zombies spawn at this tier
+	self.towers = {}
+	self.tower_cooldown = 0
+	self.mutation_timer = config.MUTATION_INTERVAL
+	self.auto_infect_timer = config.AUTO_INFECT_INTERVAL
+	self.game_over = false
+	self.blocked_at = {} -- [target id] = time an infection was last blocked by gas
+	self.gas_charges = config.GAS_CHARGES
+	self.gas_regen_timer = config.GAS_REGEN
+	self.antidotes = config.ANTIDOTES
+	self.upload_time = config.UPLOAD_TIME
+	self.active_terminal = nil
+	self.last_terminal = nil
+	self.next_terminal_timer = 0 -- first terminal lights up right away
+	self.last_vial_at = nil -- run time when the LAST_VIAL antidote was used
+
+	-- Tutorial on the first run of the session, or when replayed from the menu.
+	self.tutorial = not session.skip_tutorial and (not session.tutorial_seen or session.replay_tutorial)
+	session.tutorial_seen = true
+	session.replay_tutorial = false
+	self.tutorial_shown = {}
+	self.resolved = {} -- tips the player already acted on
+	self.intro_done = not self.tutorial
+	if self.tutorial then
+		msg.post(DIALOG, "intro")
+	end
+
+	go.set_position(config.PLAYER_SPAWN, PLAYER)
+	for _, pos in ipairs(scatter_cages()) do
+		local kind = math.random(#config.ANIMAL_TYPES)
+		factory.create("#cage_factory", pos, nil, { kind = kind })
+	end
+	for _, t in ipairs(config.TERMINALS) do
+		factory.create("#terminal_factory", t.pos, nil, { side = t.view == "side", flip = t.flip or false })
+	end
+	spawn_zombie(self, config.ZOMBIE_SPAWN)
+end
+
+function update(self, dt)
+	if self.game_over then return end
+	score.tick(self.run, dt)
+	update_gas_regen(self, dt)
+	self.tower_cooldown = math.max(0, self.tower_cooldown - dt)
+	update_mutation(self, dt)
+	update_auto_infect(self, dt)
+	update_terminals(self, dt)
+	update_tutorial(self, dt)
+	check_achievements(self)
+	send_hud(self)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("zombie_bit") then
+		on_bite(self, message.target, message.source)
+	elseif message_id == hash("animal_turned") then
+		spawn_zombie(self, message.position, nil, message.kind)
+	elseif message_id == hash("release_request") then
+		release_nearest_cage(self)
+	elseif message_id == hash("tower_request") then
+		place_tower(self)
+	elseif message_id == hash("tower_expired") then
+		forget_tower(self, message.id)
+	elseif message_id == hash("tower_pulse") then
+		tower_pulse(self, message.position)
+	elseif message_id == hash("gas_request") then
+		throw_gas(self, message.target)
+	elseif message_id == hash("drink_request") then
+		drink_request(self)
+	elseif message_id == hash("drink_finished") then
+		drink_finished(self, message.health)
+	elseif message_id == hash("player_infected") then
+		self.run.infected = true
+		banner("INFECTED!  PRESS Q", C.infected, nil, "infected")
+		tutorial(self, "antidote")
+	elseif message_id == hash("drink_interrupted") then
+		notify("Drinking interrupted!", C.bad)
+	elseif message_id == hash("antidote_not_needed") then
+		notify("Antidote not needed", C.dim)
+	elseif message_id == hash("player_turned") then
+		game_over(self)
+	elseif message_id == hash("intro_done") then
+		intro_done(self)
+	elseif message_id == hash("bait") then
+		wd.unlock_achievement("BAIT")
+	end
+end

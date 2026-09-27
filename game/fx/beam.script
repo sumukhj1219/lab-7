@@ -1,0 +1,19 @@
+-- A beam stretched lengthwise between two points that fades out: the green
+-- infection link, or the cyan stun arc when spawned with arc = true.
+
+local config = require "modules.config"
+
+go.property("arc", false)
+-- Without the real beam art, draw a flat tinted bar instead.
+go.property("placeholder_material", resource.material("/game/placeholder/solid.material"))
+
+function init(self)
+	if config.placeholder("beams") then
+		go.set("#sprite", "material", self.placeholder_material)
+		go.set("#sprite", "tint", self.arc and config.TINT.arc or config.TINT.link)
+	end
+	local time = self.arc and config.ARC_FX_TIME or config.LINK_FX_TIME
+	go.animate("#sprite", "tint.w", go.PLAYBACK_ONCE_FORWARD, 0, go.EASING_INQUAD, time, 0, function()
+		go.delete()
+	end)
+end

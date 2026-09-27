@@ -1,0 +1,2 @@
+prototype: "/game/zombie.go"
+load_dynamically: false

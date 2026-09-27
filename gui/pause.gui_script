@@ -1,0 +1,77 @@
+-- Pause screen (§7): resume, restart, controls, quit to menu.
+-- main.script freezes the game proxy; world.paused tells the player to
+-- ignore input while this is open.
+
+local config = require "modules.config"
+local world = require "modules.world"
+local ui = require "modules.ui"
+
+local W, H = config.ROOM_WIDTH, config.ROOM_HEIGHT
+local MAIN = "main:/main#script"
+
+local PAUSE = hash("pause")
+local CLICK = hash("click")
+local RETRY = hash("retry")
+
+local CONTROLS = {
+	{ "WASD / Arrows", "move" },
+	{ "E", "place stun tower" },
+	{ "G", "throw gas at mouse" },
+	{ "F", "release nearest animal" },
+	{ "Q", "drink antidote" },
+	{ "Esc / P", "pause" },
+}
+
+local function set_paused(self, paused)
+	self.paused = paused
+	world.paused = paused
+	gui.set_enabled(self.root, paused)
+	msg.post(MAIN, "set_paused", { paused = paused })
+end
+
+function init(self)
+	gui.set_render_order(5)
+	msg.post(".", "acquire_input_focus")
+
+	self.root = ui.box(nil, W / 2, H / 2, W, H, config.UI_COLOR.panel)
+	ui.text(self.root, 0, 230, "PAUSED", 1.6)
+	local controls = ui.columns(self.root, -250, -50, 150, 0.6, config.UI_COLOR.text, config.UI_COLOR.dim, gui.PIVOT_NW)
+	ui.set_columns(controls, CONTROLS)
+	self.buttons = {
+		resume = ui.button(self.root, 0, -110, 260, 50, "Resume"),
+		restart = ui.button(self.root, 0, -170, 260, 50, "Restart (R)"),
+		menu = ui.button(self.root, 0, -230, 260, 50, "Quit to menu"),
+	}
+	gui.set_enabled(self.root, false)
+	self.paused = false
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("disable_pause") then
+		self.disabled = true -- game over: pause no longer allowed
+	end
+end
+
+function on_input(self, action_id, action)
+	if self.disabled or world.in_intro then return false end
+
+	if action_id == PAUSE and action.pressed then
+		set_paused(self, not self.paused)
+		return true
+	end
+	if not self.paused then return false end
+
+	ui.hover(self.buttons, action)
+	if action_id == RETRY and action.pressed then
+		msg.post(MAIN, "restart_game")
+	elseif action_id == CLICK and action.pressed then
+		if ui.hit(self.buttons.resume, action) then
+			set_paused(self, false)
+		elseif ui.hit(self.buttons.restart, action) then
+			msg.post(MAIN, "restart_game")
+		elseif ui.hit(self.buttons.menu, action) then
+			msg.post(MAIN, "show_menu")
+		end
+	end
+	return true -- swallow everything else while paused
+end

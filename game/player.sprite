@@ -1,0 +1,10 @@
+tile_set: "/assets/player.tilesource"
+default_animation: "player_idle_front"
+material: "/game/materials/pixel.material"
+blend_mode: BLEND_MODE_ALPHA
+size_mode: SIZE_MODE_MANUAL
+size {
+  x: 48.0
+  y: 48.0
+  z: 0.0
+}

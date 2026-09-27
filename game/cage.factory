@@ -1,0 +1,2 @@
+prototype: "/game/cage.go"
+load_dynamically: false

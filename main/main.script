@@ -1,0 +1,57 @@
+-- Bootstrap (§7): owns the menu and game collection proxies and switches
+-- between them. Also freezes the game for pause and game over.
+
+local wd = require "modules.wd"
+
+local MENU = "#menu_proxy"
+local GAME = "#game_proxy"
+
+-- Unload whatever is showing, then load `proxy` (may be the same one: restart).
+local function switch_to(self, proxy)
+	if self.busy then return end -- ignore double clicks while switching
+	self.busy = true
+	self.next = proxy
+	if self.current then
+		msg.post(self.current, "disable")
+		msg.post(self.current, "final")
+		msg.post(self.current, "unload")
+		self.current = nil
+	else
+		msg.post(proxy, "async_load")
+	end
+end
+
+local function set_frozen(frozen)
+	msg.post(GAME, "set_time_step", { factor = frozen and 0 or 1, mode = 0 })
+end
+
+function init(self)
+	math.randomseed(os.time())
+	-- Input only reaches a proxied collection if the proxy's owner has focus.
+	msg.post(".", "acquire_input_focus")
+	-- Keep the whole 1280x720 room visible at any window size (letterboxed).
+	msg.post("@render:", "use_fixed_fit_projection", { near = -1, far = 1 })
+	wd.init()
+	switch_to(self, MENU)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("proxy_loaded") then
+		self.current = self.next
+		self.busy = false
+		if self.current == GAME then
+			set_frozen(false)
+		end
+		msg.post(sender, "enable")
+	elseif message_id == hash("proxy_unloaded") then
+		msg.post(self.next, "async_load")
+	elseif message_id == hash("start_game") or message_id == hash("restart_game") then
+		switch_to(self, GAME)
+	elseif message_id == hash("show_menu") then
+		switch_to(self, MENU)
+	elseif message_id == hash("set_paused") then
+		set_frozen(message.paused)
+	elseif message_id == hash("game_over") then
+		set_frozen(true)
+	end
+end

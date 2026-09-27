@@ -1,0 +1,71 @@
+-- Main menu (§7): Play, How to Play, Leaderboard (Wavedash only), Mute.
+
+local config = require "modules.config"
+local session = require "modules.session"
+local wd = require "modules.wd"
+local ui = require "modules.ui"
+
+local W, H = config.ROOM_WIDTH, config.ROOM_HEIGHT
+local MAIN = "main:/main#script"
+
+local CLICK = hash("click")
+local ADVANCE = hash("advance")
+
+local function mute_label()
+	return session.muted and "Sound: OFF" or "Sound: ON"
+end
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+
+	ui.text(nil, W / 2, H - 170, "LAB 7", 2.4, config.UI_COLOR.infected)
+	ui.text(nil, W / 2, H - 240, "CHAIN REACTION", 1.2, config.UI_COLOR.text)
+
+	self.buttons = {
+		play = ui.button(nil, W / 2, 360, 300, 56, "Play"),
+		howto = ui.button(nil, W / 2, 290, 300, 56, "How to Play"),
+		mute = ui.button(nil, W / 2, 220, 300, 56, mute_label()),
+	}
+	if wd.is_available() then
+		self.buttons.leaderboard = ui.button(nil, W / 2, 150, 300, 56, "Leaderboard")
+	end
+	ui.text(nil, W / 2, 60, "Space / Enter to play", 0.5, config.UI_COLOR.dim)
+
+	-- Leaderboard panel (Wavedash only), toggled by its button.
+	self.board = ui.box(nil, W - 250, H / 2, 400, 460, config.UI_COLOR.panel)
+	ui.text(self.board, 0, 200, "TOP 10", 0.7, config.UI_COLOR.chain)
+	self.board_text = ui.columns(self.board, -170, 170, 160, 0.45, config.UI_COLOR.text, config.UI_COLOR.score)
+	gui.set_enabled(self.board, false)
+end
+
+local function show_leaderboard(self)
+	local visible = not gui.is_enabled(self.board)
+	gui.set_enabled(self.board, visible)
+	if not visible then return end
+	ui.set_columns(self.board_text, { { "Loading...", "" } })
+	wd.get_top("high-score", config.LEADERBOARD_TOP, function(ok, entries)
+		local rows = ui.leaderboard_rows(entries)
+		if #rows == 0 then rows = { { ok and "No scores yet" or "Could not load", "" } } end
+		ui.set_columns(self.board_text, rows)
+	end)
+end
+
+function on_input(self, action_id, action)
+	ui.hover(self.buttons, action)
+	if action_id == ADVANCE and action.pressed then
+		msg.post(MAIN, "start_game")
+	elseif action_id == CLICK and action.pressed then
+		if ui.hit(self.buttons.play, action) then
+			msg.post(MAIN, "start_game")
+		elseif ui.hit(self.buttons.howto, action) then
+			session.replay_tutorial = true
+			session.skip_tutorial = false
+			msg.post(MAIN, "start_game")
+		elseif ui.hit(self.buttons.mute, action) then
+			session.set_muted(not session.muted)
+			gui.set_text(self.buttons.mute.text, mute_label())
+		elseif self.buttons.leaderboard and ui.hit(self.buttons.leaderboard, action) then
+			show_leaderboard(self)
+		end
+	end
+end

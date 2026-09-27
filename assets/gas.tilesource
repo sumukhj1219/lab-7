@@ -1,0 +1,28 @@
+image: "/assets/images/gas-cloud.png"
+tile_width: 180
+tile_height: 180
+tile_margin: 0
+tile_spacing: 0
+collision: ""
+material_tag: "tile"
+collision_groups: "default"
+animations {
+  id: "gas_bloom"
+  start_tile: 1
+  end_tile: 7
+  playback: PLAYBACK_ONCE_FORWARD
+  fps: 10
+  flip_horizontal: 0
+  flip_vertical: 0
+}
+animations {
+  id: "gas_swirl"
+  start_tile: 5
+  end_tile: 7
+  playback: PLAYBACK_LOOP_PINGPONG
+  fps: 4
+  flip_horizontal: 0
+  flip_vertical: 0
+}
+extrude_borders: 2
+inner_padding: 0

@@ -1,0 +1,2 @@
+prototype: "/game/tower.go"
+load_dynamically: false

@@ -1,0 +1,15 @@
+-- Wall bars are placeholder-only; final walls are painted into lab-floor.png.
+
+local config = require "modules.config"
+
+local SPRITES = { "#sprite_top", "#sprite_bottom", "#sprite_left", "#sprite_right" }
+
+function init(self)
+	for _, url in ipairs(SPRITES) do
+		if config.placeholder("floor") then
+			go.set(url, "tint", config.TINT.wall)
+		else
+			msg.post(url, "disable")
+		end
+	end
+end

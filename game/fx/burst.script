@@ -1,0 +1,17 @@
+-- Mutation burst: a ring that grows to the burst radius and fades.
+
+local config = require "modules.config"
+
+go.property("radius", 150)
+
+local SPRITE_SIZE = 32 -- size of burst.sprite
+
+function init(self)
+	go.set("#sprite", "tint", config.TINT.burst) -- builtin blob, always tinted
+	local s = self.radius * 2 / SPRITE_SIZE
+	go.set_scale(0.1)
+	go.animate(".", "scale", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(s, s, 1), go.EASING_OUTQUAD, config.BURST_FX_TIME)
+	go.animate("#sprite", "tint.w", go.PLAYBACK_ONCE_FORWARD, 0, go.EASING_INQUAD, config.BURST_FX_TIME, 0, function()
+		go.delete()
+	end)
+end

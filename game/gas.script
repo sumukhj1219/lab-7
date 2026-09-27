@@ -1,0 +1,33 @@
+-- Mutation gas cloud (§5.6). Slowing and infection blocking are looked up
+-- through world.in_gas(), so the cloud only has to register itself.
+
+local config = require "modules.config"
+local world = require "modules.world"
+
+local SPRITE_SIZE = 180 -- size of gas.sprite
+
+function init(self)
+	self.id = go.get_id()
+	local s = config.GAS_RADIUS * 2 / SPRITE_SIZE
+	go.set_scale(vmath.vector3(s, s, 1))
+	if config.placeholder("gas") then
+		go.set("#sprite", "tint", config.TINT.gas)
+	else
+		go.set("#sprite", "tint.w", config.GAS_ALPHA)
+		-- Bloom out once, then swirl for the rest of its life.
+		sprite.play_flipbook("#sprite", "gas_bloom", function()
+			sprite.play_flipbook("#sprite", "gas_swirl")
+		end)
+	end
+	world.gas[self.id] = { pos = go.get_position(), radius = config.GAS_RADIUS }
+
+	local fade_start = config.GAS_DURATION - config.GAS_FADE_TIME
+	go.animate("#sprite", "tint.w", go.PLAYBACK_ONCE_FORWARD, 0, go.EASING_LINEAR, config.GAS_FADE_TIME, fade_start)
+	timer.delay(config.GAS_DURATION, false, function()
+		go.delete()
+	end)
+end
+
+function final(self)
+	world.gas[self.id] = nil
+end

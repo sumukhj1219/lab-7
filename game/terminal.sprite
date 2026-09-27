@@ -1,0 +1,10 @@
+tile_set: "/assets/game.atlas"
+default_animation: "terminal_front"
+material: "/game/materials/pixel.material"
+blend_mode: BLEND_MODE_ALPHA
+size_mode: SIZE_MODE_MANUAL
+size {
+  x: 40.0
+  y: 40.0
+  z: 0.0
+}

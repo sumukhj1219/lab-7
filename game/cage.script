@@ -1,0 +1,42 @@
+local config = require "modules.config"
+local world = require "modules.world"
+local animals = require "modules.animals"
+
+go.property("kind", 1)
+go.property("rabbit_sheet", resource.tile_source("/assets/rabbit.tilesource"))
+go.property("rat_sheet", resource.tile_source("/assets/rat.tilesource"))
+go.property("cat_sheet", resource.tile_source("/assets/cat.tilesource"))
+-- Without the real cage art, draw a flat tinted square instead.
+go.property("placeholder_material", resource.material("/game/placeholder/solid.material"))
+
+local ANIMS = { open = "cage_open", broken = "cage_broken" }
+
+function init(self)
+	self.id = go.get_id()
+	-- The caged animal sits behind the bars and shows through the gaps.
+	animals.set_sheet(self, "#animal", self.kind)
+	sprite.play_flipbook("#animal", "animal_idle")
+	if config.placeholder("cage") then
+		go.set("#sprite", "material", self.placeholder_material)
+		go.set("#sprite", "tint", config.TINT.cage)
+	end
+	if config.placeholder("animal") then
+		go.set("#animal", "tint", config.TINT.animal)
+	end
+	world.cages[self.id] = { pos = go.get_position(), state = "closed", kind = self.kind }
+end
+
+function final(self)
+	world.cages[self.id] = nil
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("set_state") then
+		world.cages[self.id].state = message.state
+		msg.post("#animal", "disable")
+		sprite.play_flipbook("#sprite", ANIMS[message.state])
+		if config.placeholder("cage") then
+			go.set("#sprite", "tint", config.TINT["cage_" .. message.state])
+		end
+	end
+end

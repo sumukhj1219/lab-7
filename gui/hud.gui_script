@@ -1,0 +1,111 @@
+-- In-game HUD (§5, §6). The manager posts "hud" with the current numbers
+-- every frame, plus one-off "notify", "banner", "flash" messages.
+
+local config = require "modules.config"
+local ui = require "modules.ui"
+
+local W, H = config.ROOM_WIDTH, config.ROOM_HEIGHT
+local MUTATION_BAR_W = 360
+local SMALL_BAR_W = 60
+
+function init(self)
+	gui.set_render_order(1)
+
+	-- Green screen tint while infected (under everything else).
+	self.tint = ui.box(nil, W / 2, H / 2, W, H, config.UI_COLOR.infected_screen)
+	gui.set_alpha(self.tint, 0)
+	-- Red flash for the mutation warning.
+	self.flash = ui.box(nil, W / 2, H / 2, W, H, config.UI_COLOR.flash)
+	gui.set_alpha(self.flash, 0)
+
+	-- Top left: score and multiplier.
+	self.score = ui.text(nil, 36, H - 36, "0", 1, config.UI_COLOR.score, gui.PIVOT_W)
+	self.multiplier = ui.text(nil, 36, H - 70, "x2 INFECTED", 0.55, config.UI_COLOR.infected, gui.PIVOT_W)
+	gui.set_enabled(self.multiplier, false)
+
+	-- Top center: mutation countdown.
+	self.mutation_bg, self.mutation_fill = ui.bar(nil, W / 2, H - 30, MUTATION_BAR_W, 14, config.UI_COLOR.bar_mutation)
+	ui.hatch(self.mutation_fill, MUTATION_BAR_W, 14, 8, config.UI_COLOR.bar_mutation_hatch)
+	self.mutation_text = ui.text(nil, W / 2, H - 54, "", 0.5, config.UI_COLOR.dim)
+
+	-- Top right: antidote vials, gas, tower.
+	self.vials = {}
+	for i = 1, config.ANTIDOTES do
+		self.vials[i] = ui.vial(nil, W - 250 + (i - 1) * 28, H - 36)
+	end
+	ui.gas_icon(nil, W - 140, H - 36)
+	self.gas_text = ui.text(nil, W - 122, H - 36, "3", 0.6, config.UI_COLOR.text, gui.PIVOT_W)
+	self.gas_bg, self.gas_fill = ui.bar(nil, W - 128, H - 60, SMALL_BAR_W * 0.6, 5, config.UI_COLOR.bar_gas)
+	ui.tower_icon(nil, W - 60, H - 36)
+	self.tower_bg, self.tower_fill = ui.bar(nil, W - 60, H - 60, SMALL_BAR_W * 0.6, 5, config.UI_COLOR.bar_tower)
+
+	-- Center: banner and small notifications. (Health shows above the player.)
+	self.banner = ui.text(nil, W / 2, H / 2 + 60, "", 1.4, config.UI_COLOR.bad)
+	gui.set_alpha(self.banner, 0)
+	self.notify = ui.text(nil, W / 2, 185, "", 0.6, config.UI_COLOR.text)
+	gui.set_alpha(self.notify, 0)
+
+	self.warning = false
+end
+
+local function show_fading(node, text, color, time)
+	gui.set_text(node, text)
+	if color then gui.set_color(node, color) end
+	gui.cancel_animation(node, "color.w")
+	gui.set_alpha(node, 1)
+	gui.animate(node, "color.w", 0, gui.EASING_INQUAD, config.NOTIFY_TIME * 0.4, time)
+end
+
+local function set_warning(self, on)
+	if on == self.warning then return end
+	self.warning = on
+	gui.cancel_animation(self.mutation_fill, "color.w")
+	gui.set_color(self.mutation_fill, on and config.UI_COLOR.bar_warning or config.UI_COLOR.bar_mutation)
+	if on then
+		gui.animate(self.mutation_fill, "color.w", 0.2, gui.EASING_LINEAR, config.WARNING_BLINK, 0, nil, gui.PLAYBACK_LOOP_PINGPONG)
+	end
+end
+
+local function update_hud(self, h)
+	gui.set_text(self.score, tostring(h.score))
+	gui.set_enabled(self.multiplier, h.infected)
+
+	ui.set_bar(self.mutation_fill, MUTATION_BAR_W, h.mutation_left / config.MUTATION_INTERVAL)
+	gui.set_text(self.mutation_text, string.format("TIER %d   MUTATION IN %d", h.tier, math.ceil(h.mutation_left)))
+	set_warning(self, h.mutation_left <= config.MUTATION_WARNING)
+
+	for i, vial in ipairs(self.vials) do
+		ui.set_vial(vial, i <= h.antidotes)
+	end
+
+	gui.set_text(self.gas_text, tostring(h.gas_charges))
+	ui.set_bar(self.gas_fill, SMALL_BAR_W * 0.6, h.gas_regen)
+	ui.set_bar(self.tower_fill, SMALL_BAR_W * 0.6, 1 - h.tower_cooldown)
+
+	gui.set_alpha(self.tint, h.infected and config.INFECTED_SCREEN_ALPHA or 0)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("hud") then
+		update_hud(self, message)
+	elseif message_id == hash("notify") then
+		show_fading(self.notify, message.text, message.color, config.NOTIFY_TIME)
+	elseif message_id == hash("banner") then
+		-- Fully visible, then fades so the whole thing lasts message.time.
+		gui.set_text(self.banner, message.text)
+		gui.set_color(self.banner, message.color)
+		gui.cancel_animation(self.banner, "color.w")
+		gui.animate(self.banner, "color.w", 0, gui.EASING_INQUAD, config.BANNER_FADE, message.time - config.BANNER_FADE)
+		self.banner_tag = message.tag
+	elseif message_id == hash("clear_banner") then
+		-- Only clear it if that banner is still the one showing.
+		if self.banner_tag == message.tag then
+			gui.cancel_animation(self.banner, "color.w")
+			gui.set_alpha(self.banner, 0)
+		end
+	elseif message_id == hash("flash") then
+		gui.cancel_animation(self.flash, "color.w")
+		gui.set_alpha(self.flash, config.UI_COLOR.flash.w)
+		gui.animate(self.flash, "color.w", 0, gui.EASING_OUTQUAD, 0.5)
+	end
+end

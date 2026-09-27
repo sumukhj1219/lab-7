@@ -1,0 +1,10 @@
+tile_set: "/assets/tower.tilesource"
+default_animation: "tower"
+material: "/game/materials/pixel.material"
+blend_mode: BLEND_MODE_ALPHA
+size_mode: SIZE_MODE_MANUAL
+size {
+  x: 32.0
+  y: 32.0
+  z: 0.0
+}

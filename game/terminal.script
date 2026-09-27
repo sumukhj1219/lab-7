@@ -1,0 +1,52 @@
+-- Research terminal (§5.10). The manager decides which terminal is active
+-- and tracks upload progress in world.terminals; this script only shows it.
+
+local config = require "modules.config"
+local world = require "modules.world"
+
+go.property("side", false) -- side view (left/right wall) instead of front view
+go.property("flip", false) -- mirror the side view for the right wall
+-- Without the real terminal art, draw a flat tinted square instead.
+go.property("placeholder_material", resource.material("/game/placeholder/solid.material"))
+
+local WHITE = vmath.vector4(1, 1, 1, 1)
+
+local function show(self, active)
+	self.active = active
+	msg.post("#bar", active and "enable" or "disable")
+	go.cancel_animations("#sprite", "tint")
+	if config.placeholder("terminal") then
+		go.set("#sprite", "tint", active and config.TINT.terminal_active or config.TINT.terminal_off)
+	else
+		go.set("#sprite", "tint", WHITE)
+		if active then
+			go.animate("#sprite", "tint", go.PLAYBACK_LOOP_PINGPONG, config.TINT.terminal_glow, go.EASING_INOUTSINE, config.TERMINAL_PULSE_TIME)
+		end
+	end
+end
+
+function init(self)
+	self.id = go.get_id()
+	world.terminals[self.id] = { pos = go.get_position(), active = false, progress = 0 }
+	sprite.play_flipbook("#sprite", self.side and "terminal_side" or "terminal_front")
+	sprite.set_hflip("#sprite", self.flip)
+	if config.placeholder("terminal") then
+		go.set("#sprite", "material", self.placeholder_material)
+	end
+	go.set("#bar", "tint", config.TINT.upload_bar)
+	show(self, false)
+end
+
+function final(self)
+	world.terminals[self.id] = nil
+end
+
+function update(self, dt)
+	local t = world.terminals[self.id]
+	if t.active ~= self.active then
+		show(self, t.active)
+	end
+	if t.active then
+		go.set("#bar", "scale.x", math.max(0.01, t.progress))
+	end
+end

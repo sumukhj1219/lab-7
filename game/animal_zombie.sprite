@@ -1,0 +1,10 @@
+tile_set: "/assets/rabbit.tilesource"
+default_animation: "animal_zombie"
+material: "/game/materials/pixel_flash.material"
+blend_mode: BLEND_MODE_ALPHA
+size_mode: SIZE_MODE_MANUAL
+size {
+  x: 24.0
+  y: 24.0
+  z: 0.0
+}

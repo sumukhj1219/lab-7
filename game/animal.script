@@ -1,0 +1,103 @@
+local config = require "modules.config"
+local world = require "modules.world"
+local animals = require "modules.animals"
+
+go.property("kind", 1)
+go.property("rabbit_sheet", resource.tile_source("/assets/rabbit.tilesource"))
+go.property("rat_sheet", resource.tile_source("/assets/rat.tilesource"))
+go.property("cat_sheet", resource.tile_source("/assets/cat.tilesource"))
+go.property("infected", false) -- spawned already infected (cage broken by a burst)
+
+local MANAGER = "/manager#script"
+local WALL = hash("wall")
+
+function init(self)
+	self.id = go.get_id()
+	self.correction = vmath.vector3()
+	local start_infected = self.infected
+	self.infected = false
+	self.anim = nil
+	animals.set_sheet(self, "#sprite", self.kind)
+	world.animals[self.id] = { pos = go.get_position(), radius = config.ANIMAL_RADIUS, infected = start_infected }
+	if start_infected then
+		msg.post("#", "infect")
+	end
+end
+
+function final(self)
+	world.animals[self.id] = nil
+end
+
+local function play(self, anim)
+	if self.anim ~= anim then
+		self.anim = anim
+		sprite.play_flipbook("#sprite", anim)
+	end
+end
+
+function update(self, dt)
+	local pos = go.get_position()
+	local moving = false
+	if not self.infected then
+		-- Run straight away from the nearest zombie.
+		local _, zombie = world.nearest(world.zombies, pos)
+		if zombie then
+			local away = pos - zombie.pos
+			away.z = 0
+			if vmath.length_sqr(away) > 0 then
+				local dir = vmath.normalize(away)
+				pos = pos + dir * config.ANIMAL_SPEED * dt
+				go.set_position(pos)
+				moving = true
+				-- The art faces left: mirror it when running right.
+				if dir.x ~= 0 then
+					sprite.set_hflip("#sprite", dir.x > 0)
+				end
+			end
+		end
+		play(self, moving and "animal_run" or "animal_idle")
+	end
+	-- Don't stack on other animals.
+	local push = world.push_apart(self.id, pos, config.ANIMAL_RADIUS, world.animals, config.SEPARATION)
+	if vmath.length_sqr(push) > 0 then
+		pos = pos + push
+		go.set_position(pos)
+	end
+
+	world.animals[self.id].pos = pos
+	self.correction = vmath.vector3()
+end
+
+local function separate(self, normal, distance)
+	if distance <= 0 then return end
+	local proj = vmath.project(self.correction, normal * distance)
+	if proj < 1 then
+		local comp = (distance - distance * proj) * normal
+		go.set_position(go.get_position() + comp)
+		self.correction = self.correction + comp
+	end
+end
+
+local function turn(self)
+	msg.post(MANAGER, "animal_turned", { position = go.get_position(), kind = self.kind })
+	go.delete()
+end
+
+local function infect(self)
+	-- Stop, blink for ANIMAL_TURN_TIME, then become a zombie.
+	self.infected = true
+	world.animals[self.id].infected = true
+	play(self, "animal_zombie") -- already shows its zombie form while turning
+	go.animate("#sprite", "tint.w", go.PLAYBACK_LOOP_PINGPONG, 0.2, go.EASING_LINEAR, config.ANIMAL_FLASH_PERIOD)
+	timer.delay(config.ANIMAL_TURN_TIME, false, turn)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("contact_point_response") then
+		if message.other_group == WALL then
+			separate(self, message.normal, message.distance)
+		end
+	elseif message_id == hash("infect") and not self.infected then
+		infect(self)
+	end
+end

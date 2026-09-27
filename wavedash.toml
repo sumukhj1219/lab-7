@@ -1,0 +1,5 @@
+# TODO: paste the game_id from the Wavedash Dev Portal.
+game_id = ""
+# Bundle HTML5 into dist/ (never build/), then run: wavedash build push
+upload_dir = "./dist"
+entrypoint = "index.html"
