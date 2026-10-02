@@ -30,6 +30,7 @@ end
 -- One sheet for every tier: tier and stun show as a colored glow (the art is
 -- too dark for a multiplied tint).
 local function refresh_look(self)
+	go.cancel_animations("#sprite", "flash")
 	go.set("#sprite", "flash", self.stunned and config.ZOMBIE_STUN_FLASH or config.ZOMBIE_TIER_FLASH[self.tier])
 end
 
@@ -173,6 +174,10 @@ function on_message(self, message_id, message, sender)
 		self.stunned = true
 		world.zombies[self.id].stunned = true
 		refresh_look(self)
+		-- Hit flash: a white pop that settles into the blue stun glow.
+		go.cancel_animations("#sprite", "flash")
+		go.set("#sprite", "flash", config.ZOMBIE_STUN_POP)
+		go.animate("#sprite", "flash", go.PLAYBACK_ONCE_FORWARD, config.ZOMBIE_STUN_FLASH, go.EASING_OUTQUAD, config.ZOMBIE_STUN_POP_TIME)
 		timer.delay(config.STUN_TIME, false, unstun)
 	elseif message_id == hash("mutate") then
 		self.tier = message.tier

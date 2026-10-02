@@ -8,6 +8,7 @@ local score = require "modules.score"
 local session = require "modules.session"
 local wd = require "modules.wd"
 local sfx = require "modules.sfx"
+local shake = require "modules.shake"
 
 local PLAYER = "/player"
 local HUD = "/ui#hud"
@@ -256,6 +257,7 @@ end
 
 local function mutate(self)
 	resolve(self, "mutation") -- the warning tip is stale once it happens
+	shake.start(config.SHAKE_MUTATION.strength, config.SHAKE_MUTATION.time)
 	self.tier = math.min(self.tier + 1, config.TIER_MAX)
 	banner("MUTATION!  TIER " .. self.tier, C.bad, config.MUTATION_BANNER_TIME)
 
@@ -376,6 +378,7 @@ end
 
 local function game_over(self)
 	self.game_over = true
+	shake.stop()
 	score.finish(self.run, self.antidotes)
 	local new_best = self.run.score > session.best_score
 	session.best_score = math.max(session.best_score, self.run.score)
@@ -599,8 +602,13 @@ function init(self)
 	spawn_zombie(self, config.ZOMBIE_SPAWN)
 end
 
+function final(self)
+	shake.stop() -- leaving the run (restart, menu): don't leave the view offset
+end
+
 function update(self, dt)
 	if self.game_over then return end
+	shake.update(dt)
 	score.tick(self.run, dt)
 	update_gas_regen(self, dt)
 	self.tower_cooldown = math.max(0, self.tower_cooldown - dt)

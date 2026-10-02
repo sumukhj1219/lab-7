@@ -132,10 +132,10 @@ Show a small controls reminder on the pause screen.
 
 ### 5.5 Stun towers
 - Max `TOWER_MAX = 3` active; placing a 4th removes the oldest.
-- Placement cooldown `TOWER_COOLDOWN = 6` s.
+- Placement cooldown `TOWER_COOLDOWN = 5` s.
 - Every `TOWER_PULSE_INTERVAL = 3` s, stuns the nearest zombie within `TOWER_RANGE = 140`.
 - **Chain:** from a stunned zombie, the stun jumps to the nearest unstunned zombie within `CHAIN_RADIUS = 110`, up to `CHAIN_MAX = 8` jumps. Draw an arc per jump.
-- Each tower disappears `TOWER_LIFETIME = 10` s after placement.
+- Each tower disappears `TOWER_LIFETIME = 12` s after placement.
 - Stun duration `STUN_TIME = 2.5` s. Stunned zombie gets `STUN_IMMUNE = 1` s immunity after.
 
 ### 5.6 Mutation gas
@@ -147,7 +147,7 @@ Show a small controls reminder on the pause screen.
 
 ### 5.7 Mutation
 - Every `MUTATION_INTERVAL = 30` s. Show a countdown bar; warning flash + sound at 5 s left.
-- Each zombie that mutates gains +1 tier (max tier 4) and emits a **burst** of radius `BURST_RADIUS = 150` that infects caged or free animals in range (blocked by gas).
+- Each zombie that mutates gains +1 tier (max tier 4) and emits a **burst** of radius `BURST_RADIUS = 120` that infects caged or free animals in range (blocked by gas).
 - Tier effects:
   - Tier 1: +20% speed
   - Tier 2: visible glow (sight bonus has no effect while sight is infinite)
@@ -157,11 +157,11 @@ Show a small controls reminder on the pause screen.
 
 ### 5.8 Health, infection and antidotes
 - The player has `PLAYER_HEALTH = 100`, shown as a bar above their head (green → yellow → red). Health never refills by itself.
-- Every zombie hit: −`HIT_DAMAGE = 15` and `HIT_INVULN = 1` s of blinking protection. The first hit also makes the player `infected` (screen tint).
-- While infected (or drinking), health drains at `INFECTION_DRAIN` (full bar in 30 s).
+- Every zombie hit: −`HIT_DAMAGE = 15` and `HIT_INVULN = 1.5` s of blinking protection. The first hit also makes the player `infected` (screen tint).
+- While infected (or drinking), health drains at `INFECTION_DRAIN = 2`/s (full bar in 50 s).
 - While infected: score multiplier ×2, player still moves.
 - **Antidotes:** `ANTIDOTES = 3` per run, shown as vials in the HUD.
-- Press Q while infected → `drinking` for `DRINK_TIME = 1` s (cannot move; if hit during drinking, drinking is cancelled but the antidote is not used, and the hit still does damage). Then cured (drain stops) and healed by only `ANTIDOTE_HEAL = 25`, with `CURE_INVULN = 2` s invulnerability (blinking).
+- Press Q while infected → `drinking` for `DRINK_TIME = 1` s (cannot move; if hit during drinking, drinking is cancelled but the antidote is not used, and the hit still does damage). Then cured (drain stops) and healed by only `ANTIDOTE_HEAL = 35`, with `CURE_INVULN = 2` s invulnerability (blinking).
 - Health hits 0 (from hits or drain) → `turned` → game over sequence (1.5 s transformation, then Game Over screen).
 - Q while not infected does nothing (small "not needed" feedback).
 

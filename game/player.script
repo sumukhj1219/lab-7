@@ -7,6 +7,7 @@
 local config = require "modules.config"
 local world = require "modules.world"
 local sfx = require "modules.sfx"
+local shake = require "modules.shake"
 
 local UP = hash("up")
 local DOWN = hash("down")
@@ -134,6 +135,11 @@ end
 -- A zombie hit: damage, infection (if not already), a moment of protection.
 local function take_hit(self)
 	sfx.play("hit")
+	shake.start(config.SHAKE_HIT.strength, config.SHAKE_HIT.time)
+	-- Flash red, then fade back.
+	go.cancel_animations("#sprite", "flash")
+	go.set("#sprite", "flash", config.PLAYER_HIT_FLASH)
+	go.animate("#sprite", "flash", go.PLAYBACK_ONCE_FORWARD, vmath.vector4(config.PLAYER_HIT_FLASH.x, config.PLAYER_HIT_FLASH.y, config.PLAYER_HIT_FLASH.z, 0), go.EASING_OUTQUAD, config.PLAYER_HIT_FLASH_TIME)
 	if self.state == "drinking" then
 		-- Hit mid-drink: cancelled, but the antidote is kept.
 		timer.cancel(self.drink_timer)

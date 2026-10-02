@@ -144,7 +144,7 @@ end
 
 function M.button(parent, x, y, w, h, label)
 	local node = M.box(parent, x, y, w, h, config.UI_COLOR.button)
-	local text = M.text(node, 0, 0, label, 0.7)
+	local text = M.text(node, 0, 0, label, 0.8)
 	return { node = node, text = text }
 end
 

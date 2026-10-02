@@ -20,13 +20,13 @@ function init(self)
 
 	-- Top left: score and multiplier.
 	self.score = ui.text(nil, 36, H - 36, "0", 1, config.UI_COLOR.score, gui.PIVOT_W)
-	self.multiplier = ui.text(nil, 36, H - 70, "x2 INFECTED", 0.55, config.UI_COLOR.infected, gui.PIVOT_W)
+	self.multiplier = ui.text(nil, 36, H - 70, "x2 INFECTED", 0.6, config.UI_COLOR.infected, gui.PIVOT_W)
 	gui.set_enabled(self.multiplier, false)
 
 	-- Top center: mutation countdown.
 	self.mutation_bg, self.mutation_fill = ui.bar(nil, W / 2, H - 30, MUTATION_BAR_W, 14, config.UI_COLOR.bar_mutation)
 	ui.hatch(self.mutation_fill, MUTATION_BAR_W, 14, 8, config.UI_COLOR.bar_mutation_hatch)
-	self.mutation_text = ui.text(nil, W / 2, H - 54, "", 0.5, config.UI_COLOR.dim)
+	self.mutation_text = ui.text(nil, W / 2, H - 54, "", 0.55, config.UI_COLOR.dim)
 
 	-- Top right: antidote vials, gas, tower.
 	self.vials = {}
@@ -42,7 +42,7 @@ function init(self)
 	-- Center: banner and small notifications. (Health shows above the player.)
 	self.banner = ui.text(nil, W / 2, H / 2 + 60, "", 1.4, config.UI_COLOR.bad)
 	gui.set_alpha(self.banner, 0)
-	self.notify = ui.text(nil, W / 2, 185, "", 0.6, config.UI_COLOR.text)
+	self.notify = ui.text(nil, W / 2, 185, "", 0.7, config.UI_COLOR.text)
 	gui.set_alpha(self.notify, 0)
 
 	self.warning = false

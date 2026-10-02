@@ -116,8 +116,8 @@ M.FX_Z = 0.45
 
 -- Stun towers (§5.5) -------------------------------------------------------
 M.TOWER_MAX = 3
-M.TOWER_COOLDOWN = 6
-M.TOWER_LIFETIME = 10 -- towers vanish after this long (added after M3 playtest)
+M.TOWER_COOLDOWN = 5
+M.TOWER_LIFETIME = 12 -- towers vanish after this long
 M.TOWER_PULSE_INTERVAL = 3
 M.TOWER_RANGE = 140
 M.CHAIN_RADIUS = 110
@@ -142,7 +142,7 @@ M.CASCADE_BLOCK_COOLDOWN = 6
 -- Mutation (§5.7) ----------------------------------------------------------
 M.MUTATION_INTERVAL = 30
 M.MUTATION_WARNING = 5
-M.BURST_RADIUS = 150
+M.BURST_RADIUS = 120
 M.TIER_MAX = 4
 M.TIER1_SPEED_BONUS = 0.2  -- tier 1: +20% speed
 M.TIER2_SIGHT_BONUS = 0.25 -- tier 2: +25% sight, visible glow
@@ -155,9 +155,9 @@ M.SPLIT_OFFSET = 24        -- px between the two halves of a split
 -- Player health (§5.8). Never refills by itself: only antidotes heal.
 M.PLAYER_HEALTH = 100
 M.HIT_DAMAGE = 15        -- each zombie hit
-M.HIT_INVULN = 1         -- seconds of protection after a hit (blinking)
-M.INFECTION_DRAIN = 100 / 30 -- health lost per second while infected (full bar = 30 s)
-M.ANTIDOTE_HEAL = 25     -- health an antidote gives back (capped at PLAYER_HEALTH)
+M.HIT_INVULN = 1.5       -- seconds of protection after a hit (blinking)
+M.INFECTION_DRAIN = 2  -- health lost per second while infected (full bar = 50 s)
+M.ANTIDOTE_HEAL = 35     -- health an antidote gives back (capped at PLAYER_HEALTH)
 M.HEALTH_BAR_Y = 34      -- bar height above the player's center
 M.HEALTH_BAR_W = 40      -- must match health_bg.sprite / health_fill.sprite
 M.ANTIDOTES = 3
@@ -171,6 +171,14 @@ M.CLOSE_CALL_HEALTH = 15 -- CLOSE_CALL: antidote finished with less health than 
 M.AUTO_INFECT_INTERVAL = 45
 M.AUTO_INFECT_MIN_ZOMBIES = 3
 
+-- Juice: screen shake (px, seconds) and hit flashes (rgb + strength, seconds).
+M.SHAKE_HIT = { strength = 6, time = 0.25 }      -- player bitten
+M.SHAKE_MUTATION = { strength = 8, time = 0.4 }  -- mutation burst
+M.PLAYER_HIT_FLASH = vmath.vector4(1.0, 0.15, 0.1, 0.8) -- player turns red for a moment
+M.PLAYER_HIT_FLASH_TIME = 0.25
+M.ZOMBIE_STUN_POP = vmath.vector4(1, 1, 1, 0.9)  -- white pop before the blue stun glow
+M.ZOMBIE_STUN_POP_TIME = 0.15
+
 -- Background music (main/music.sound, loops forever). Kept under the sound
 -- effects, whose gains are 0.5-0.8.
 M.MUSIC_GAIN = 0.3
@@ -178,6 +186,7 @@ M.MUSIC_GAIN = 0.3
 -- Sound effects (modules/sfx.lua). gain = volume. Sounds with `gap` queue
 -- up instead of overlapping: `gap` seconds apart, each `pitch_step` higher
 -- than the last, up to `max_pitch`.
+M.SFX_VOLUME = 0.75 -- multiplies every sound effect's gain (not the music)
 M.SFX = {
 	coin = { gain = 0.5, gap = 0.06, pitch_step = 0.05, max_pitch = 1.8 }, -- pickupCoin.wav: each points award
 	powerup = { gain = 0.7 }, -- powerUp.wav: cured
@@ -188,7 +197,7 @@ M.SFX = {
 -- Placeholder art (§9.1) ---------------------------------------------------
 -- While true, sprites are tinted builtin blobs. Set to false once all of
 -- the developer's art is in the atlases so the real art is not recolored.
-M.PLACEHOLDER_ART = true
+M.PLACEHOLDER_ART = false
 -- Pieces whose final art is already in, while the rest are placeholders.
 M.FINAL_ART = {
 	floor = true, -- assets/images/lab-floor.png (walls are painted into it)

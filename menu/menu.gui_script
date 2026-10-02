@@ -29,12 +29,12 @@ function init(self)
 	if wd.is_available() then
 		self.buttons.leaderboard = ui.button(nil, W / 2, 150, 300, 56, "Leaderboard")
 	end
-	ui.text(nil, W / 2, 60, "Space / Enter to play", 0.5, config.UI_COLOR.dim)
+	ui.text(nil, W / 2, 60, "Space / Enter to play", 0.6, config.UI_COLOR.dim)
 
 	-- Leaderboard panel (Wavedash only), toggled by its button.
 	self.board = ui.box(nil, W - 250, H / 2, 400, 460, config.UI_COLOR.panel)
 	ui.text(self.board, 0, 200, "TOP 10", 0.7, config.UI_COLOR.chain)
-	self.board_text = ui.columns(self.board, -170, 170, 160, 0.45, config.UI_COLOR.text, config.UI_COLOR.score)
+	self.board_text = ui.columns(self.board, -170, 170, 160, 0.55, config.UI_COLOR.text, config.UI_COLOR.score)
 	gui.set_enabled(self.board, false)
 end
 

@@ -18,7 +18,8 @@ local ADVANCE = hash("advance")
 local CLICK = hash("click")
 
 local BOX_W, BOX_H = 1000, 130
-local TEXT_W = 780 -- wrap width of the line, in unscaled text units
+local TEXT_W = 780 -- wrap width of the line, in screen pixels
+local TEXT_SCALE = 0.58
 
 local function set_visible(self, visible)
 	gui.set_enabled(self.root, visible)
@@ -71,11 +72,11 @@ function init(self)
 
 	self.root = ui.box(nil, W / 2, 90, BOX_W, BOX_H, config.UI_COLOR.panel)
 	self.portrait = ui.labai_portrait(self.root, -BOX_W / 2 + 56, 0)
-	ui.text(self.root, -BOX_W / 2 + 110, 38, dialog.SPEAKER, 0.55, config.UI_COLOR.chain, gui.PIVOT_W)
-	self.text = ui.text(self.root, -BOX_W / 2 + 110, 8, "", 0.5, config.UI_COLOR.text, gui.PIVOT_NW)
-	gui.set_size(self.text, vmath.vector3(TEXT_W / 0.5, 200, 0))
+	ui.text(self.root, -BOX_W / 2 + 110, 38, dialog.SPEAKER, 0.6, config.UI_COLOR.chain, gui.PIVOT_W)
+	self.text = ui.text(self.root, -BOX_W / 2 + 110, 8, "", TEXT_SCALE, config.UI_COLOR.text, gui.PIVOT_NW)
+	gui.set_size(self.text, vmath.vector3(TEXT_W / TEXT_SCALE, 200, 0))
 	self.skip = ui.button(self.root, BOX_W / 2 - 90, -38, 160, 34, "Skip tutorial")
-	gui.set_scale(self.skip.text, vmath.vector3(0.45, 0.45, 1))
+	gui.set_scale(self.skip.text, vmath.vector3(0.5, 0.5, 1))
 
 	self.queue = {}
 	self.line = ""

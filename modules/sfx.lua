@@ -30,7 +30,7 @@ function M.play(name)
 		queue_free[name] = now + delay + s.gap
 		speed = math.min(s.max_pitch, 1 + streak[name] * s.pitch_step)
 	end
-	sound.play("/sfx#" .. name, { gain = s.gain, delay = delay, speed = speed })
+	sound.play("/sfx#" .. name, { gain = s.gain * config.SFX_VOLUME, delay = delay, speed = speed })
 end
 
 return M
