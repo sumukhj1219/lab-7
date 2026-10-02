@@ -7,8 +7,17 @@ local M = {}
 
 local strength, time_left, duration = 0, 0, 0
 
+local SHAKE_ID = hash("shake")
+local NO_PROJECTION = vmath.matrix4() -- ignored: the render script keeps its fixed-fit projection
+
+-- set_view_projection is a built-in render message: id, view and projection
+-- are all required fields.
 local function set_offset(x, y)
-	msg.post("@render:", "set_view_projection", { view = vmath.matrix4_translation(vmath.vector3(x, y, 0)) })
+	msg.post("@render:", "set_view_projection", {
+		id = SHAKE_ID,
+		view = vmath.matrix4_translation(vmath.vector3(x, y, 0)),
+		projection = NO_PROJECTION,
+	})
 end
 
 -- A stronger shake wins over a weaker one already running.

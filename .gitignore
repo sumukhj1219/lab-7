@@ -2,3 +2,5 @@
 /build
 /dist
 /.editor_settings
+/wasm-web
+/lab7-itch.zip

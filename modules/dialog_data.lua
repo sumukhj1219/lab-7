@@ -17,7 +17,6 @@ M.tutorial = {
 	release = "Press F to release an animal. Zombies will chase it instead of you... but anything they bite, they turn.",
 	mutation = "Subject Zero is about to mutate. Every 30 seconds it gets stronger.",
 	antidote = "You're infected! Press Q to drink an antidote. You only have 3.",
-	terminal = "TODO (developer): terminal line - go to the lit terminal and upload research.",
 	score = "Stun chains, survival time, and unused antidotes all add to your score. Good luck, Doctor.",
 }
 

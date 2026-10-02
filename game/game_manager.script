@@ -378,13 +378,14 @@ end
 
 local function game_over(self)
 	self.game_over = true
-	shake.stop()
 	score.finish(self.run, self.antidotes)
 	local new_best = self.run.score > session.best_score
 	session.best_score = math.max(session.best_score, self.run.score)
+	-- Show the screen first: nothing after this may stop the run from ending.
 	msg.post(PAUSE, "disable_pause")
 	msg.post(GAMEOVER, "show", { run = self.run, best = session.best_score, new_best = new_best })
 	msg.post(MAIN, "game_over")
+	shake.stop()
 
 	wd.add_stat("RUNS_PLAYED", 1)
 	wd.store()
@@ -432,7 +433,6 @@ local function activate_next_terminal(self)
 	world.terminals[id].progress = 0
 	self.active_terminal = id
 	self.tone_played = false
-	tutorial(self, "terminal")
 end
 
 local function complete_upload(self, id)
@@ -463,7 +463,6 @@ local function update_terminals(self, dt)
 	end
 	if in_range then
 		t.progress = t.progress + dt / self.upload_time
-		resolve(self, "terminal")
 		if t.progress >= 1 then
 			complete_upload(self, self.active_terminal)
 		end
@@ -482,9 +481,6 @@ local function intro_done(self)
 	self.intro_done = true
 	self.tower_tip_timer = config.TUTORIAL_TOWER_DELAY
 	tutorial(self, "move")
-	if self.active_terminal then
-		tutorial(self, "terminal")
-	end
 end
 
 local function update_tutorial(self, dt)

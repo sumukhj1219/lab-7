@@ -226,7 +226,6 @@ Lines live in `modules/dialog_data.lua` (text is written by the developer; Claud
 | `release` | player first within range of a cage | "Press F to release an animal. Zombies will chase it instead of you... but anything they bite, they turn." |
 | `mutation` | first mutation warning (5 s left) | "Subject Zero is about to mutate. Every 30 seconds it gets stronger." |
 | `antidote` | first time infected | "You're infected! Press Q to drink an antidote. You only have 3." |
-| `terminal` | first terminal lights up | *(developer to write)* |
 | `score` | after first mutation | "Stun chains, survival time, and unused antidotes all add to your score. Good luck, Doctor." |
 
 **Game over (random)**

@@ -51,7 +51,7 @@ end
 local function show_fading(node, text, color, time)
 	gui.set_text(node, text)
 	if color then gui.set_color(node, color) end
-	gui.cancel_animation(node, "color.w")
+	gui.cancel_animations(node, "color.w")
 	gui.set_alpha(node, 1)
 	gui.animate(node, "color.w", 0, gui.EASING_INQUAD, config.NOTIFY_TIME * 0.4, time)
 end
@@ -59,7 +59,7 @@ end
 local function set_warning(self, on)
 	if on == self.warning then return end
 	self.warning = on
-	gui.cancel_animation(self.mutation_fill, "color.w")
+	gui.cancel_animations(self.mutation_fill, "color.w")
 	gui.set_color(self.mutation_fill, on and config.UI_COLOR.bar_warning or config.UI_COLOR.bar_mutation)
 	if on then
 		gui.animate(self.mutation_fill, "color.w", 0.2, gui.EASING_LINEAR, config.WARNING_BLINK, 0, nil, gui.PLAYBACK_LOOP_PINGPONG)
@@ -94,17 +94,17 @@ function on_message(self, message_id, message, sender)
 		-- Fully visible, then fades so the whole thing lasts message.time.
 		gui.set_text(self.banner, message.text)
 		gui.set_color(self.banner, message.color)
-		gui.cancel_animation(self.banner, "color.w")
+		gui.cancel_animations(self.banner, "color.w")
 		gui.animate(self.banner, "color.w", 0, gui.EASING_INQUAD, config.BANNER_FADE, message.time - config.BANNER_FADE)
 		self.banner_tag = message.tag
 	elseif message_id == hash("clear_banner") then
 		-- Only clear it if that banner is still the one showing.
 		if self.banner_tag == message.tag then
-			gui.cancel_animation(self.banner, "color.w")
+			gui.cancel_animations(self.banner, "color.w")
 			gui.set_alpha(self.banner, 0)
 		end
 	elseif message_id == hash("flash") then
-		gui.cancel_animation(self.flash, "color.w")
+		gui.cancel_animations(self.flash, "color.w")
 		gui.set_alpha(self.flash, config.UI_COLOR.flash.w)
 		gui.animate(self.flash, "color.w", 0, gui.EASING_OUTQUAD, 0.5)
 	end
