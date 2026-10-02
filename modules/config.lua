@@ -171,6 +171,10 @@ M.CLOSE_CALL_HEALTH = 15 -- CLOSE_CALL: antidote finished with less health than 
 M.AUTO_INFECT_INTERVAL = 45
 M.AUTO_INFECT_MIN_ZOMBIES = 3
 
+-- Background music (main/music.sound, loops forever). Kept under the sound
+-- effects, whose gains are 0.5-0.8.
+M.MUSIC_GAIN = 0.3
+
 -- Sound effects (modules/sfx.lua). gain = volume. Sounds with `gap` queue
 -- up instead of overlapping: `gap` seconds apart, each `pitch_step` higher
 -- than the last, up to `max_pitch`.

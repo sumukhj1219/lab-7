@@ -1,7 +1,9 @@
 -- Bootstrap (§7): owns the menu and game collection proxies and switches
--- between them. Also freezes the game for pause and game over.
+-- between them. Also freezes the game for pause and game over, and plays
+-- the background music, which lives here so it runs across menu and game.
 
 local wd = require "modules.wd"
+local config = require "modules.config"
 
 local MENU = "#menu_proxy"
 local GAME = "#game_proxy"
@@ -53,5 +55,14 @@ function on_message(self, message_id, message, sender)
 		set_frozen(message.paused)
 	elseif message_id == hash("game_over") then
 		set_frozen(true)
+	end
+end
+
+-- Browsers only allow audio after the player interacts, so the music starts
+-- on the first key press or click. Input still reaches the proxies.
+function on_input(self, action_id, action)
+	if not self.music_started and action_id and action.pressed then
+		self.music_started = true
+		sound.play("#music", { gain = config.MUSIC_GAIN })
 	end
 end

@@ -10,3 +10,7 @@ components {
   id: "menu_proxy"
   component: "/main/menu.collectionproxy"
 }
+components {
+  id: "music"
+  component: "/main/music.sound"
+}

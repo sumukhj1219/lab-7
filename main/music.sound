@@ -1,0 +1,4 @@
+sound: "/assets/sounds/background.wav"
+looping: 1
+group: "master"
+gain: 1.0
